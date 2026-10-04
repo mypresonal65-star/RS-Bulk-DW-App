@@ -209,11 +209,11 @@ class _AuthScreenState extends State<AuthScreen> {
                           fillColor: const Color(0xFF090E1C),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: Border.all(color: Colors.white.withOpacity(0.1)),
+                            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: Border.all(color: Colors.white.withOpacity(0.08)),
+                            borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
                           ),
                           prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF38BDF8), size: 20),
                         ),
@@ -243,11 +243,11 @@ class _AuthScreenState extends State<AuthScreen> {
                           fillColor: const Color(0xFF090E1C),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: Border.all(color: Colors.white.withOpacity(0.1)),
+                            borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: Border.all(color: Colors.white.withOpacity(0.08)),
+                            borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
                           ),
                           prefixIcon: const Icon(Icons.vpn_key_outlined, color: Color(0xFF38BDF8), size: 20),
                         ),

@@ -46,6 +46,7 @@ class UserSession {
   });
 
   bool get isExpired => expiresAt > 0 && expiresAt < (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+  String get sessionToken => token;
 
   factory UserSession.fromJson(Map<String, dynamic> json) {
     return UserSession(

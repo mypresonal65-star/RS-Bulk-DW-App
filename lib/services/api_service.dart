@@ -3,10 +3,13 @@ import 'package:http/http.dart' as http;
 import '../models/user_session.dart';
 
 class ApiService {
-  static const String cloudApiUrl = "https://rarestudy-api.mypresonal65.workers.dev";
+  static const String defaultCloudApiUrl = "https://rarestudy-api.mypresonal65.workers.dev";
+  final String cloudApiUrl;
   
   Map<String, String> _headers = {};
   Map<String, String> _cookies = {};
+
+  ApiService([String? url]) : cloudApiUrl = url ?? defaultCloudApiUrl;
 
   void updateHeadersAndCookies(Map<String, dynamic> config) {
     if (config['headers'] is Map) {
@@ -69,7 +72,7 @@ class ApiService {
 
   // --- 2. CHECK SESSION ON APP STARTUP ---
   Future<Map<String, dynamic>> checkSession({
-    required String hwid,
+    String hwid = "",
     required String token,
   }) async {
     try {
@@ -99,6 +102,10 @@ class ApiService {
     }
   }
 
+  // Helper checkSession with single string token
+  Future<Map<String, dynamic>> checkSessionToken(String token, [String hwid = ""]) =>
+      checkSession(token: token, hwid: hwid);
+
   // --- 3. FETCH CENTRALIZED HEADERS FROM CLOUD ---
   Future<bool> fetchRemoteHeaders() async {
     try {
@@ -116,6 +123,8 @@ class ApiService {
     } catch (_) {}
     return false;
   }
+
+  Future<bool> fetchCentralHeaders() => fetchRemoteHeaders();
 
   // --- 4. EXTRACT MEDIA TOKEN & DRM KEYS ---
   Future<Map<String, dynamic>> getVideoUrlDetails({

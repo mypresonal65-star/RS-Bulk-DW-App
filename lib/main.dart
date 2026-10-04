@@ -113,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (session != null) {
       // Validate session with Cloudflare backend
       setState(() => _statusText = "Syncing with cloud server...");
-      final check = await _apiService.checkSession(session.sessionToken);
+      final check = await _apiService.checkSession(token: session.token, hwid: session.hwid);
 
       if (!mounted) return;
 

@@ -181,7 +181,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       if (_errorMessage.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.all(12),
-                          margin: const EdgeInsets.bottom(16),
+                          margin: const EdgeInsets.only(bottom: 16),
                           decoration: BoxDecoration(
                             color: Colors.red.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(8),

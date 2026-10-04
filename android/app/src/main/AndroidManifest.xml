@@ -28,7 +28,8 @@
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:extractNativeLibs="true">
         
         <activity
             android:name=".MainActivity"

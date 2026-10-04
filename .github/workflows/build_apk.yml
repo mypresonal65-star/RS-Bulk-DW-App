@@ -35,6 +35,36 @@ jobs:
       - name: Fetch Dependencies
         run: flutter pub get
 
+      - name: Download & Bundle Android ARM64 Binaries
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          
+          # 1. Download N_m3u8DL-RE (Android Bionic ARM64)
+          echo "Fetching N_m3u8DL-RE for Android ARM64..."
+          curl -s https://api.github.com/repos/nilaoda/N_m3u8DL-RE/releases/latest | \
+            grep -o "https://[^\"]*android-bionic-arm64[^\"]*\.tar\.gz" | head -n 1 | xargs -r curl -sL -o n_m3u8dl.tar.gz || true
+          
+          if [ ! -f n_m3u8dl.tar.gz ] || [ ! -s n_m3u8dl.tar.gz ]; then
+            echo "Using direct fallback URL for N_m3u8DL-RE..."
+            curl -sL "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.3.0-beta/N_m3u8DL-RE_Beta_android-bionic-arm64.tar.gz" -o n_m3u8dl.tar.gz || \
+            curl -sL "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.2.0-beta/N_m3u8DL-RE_Beta_android-bionic-arm64.tar.gz" -o n_m3u8dl.tar.gz || true
+          fi
+          
+          if [ -f n_m3u8dl.tar.gz ] && [ -s n_m3u8dl.tar.gz ]; then
+            tar -xzf n_m3u8dl.tar.gz
+            find . -name "N_m3u8DL-RE*" -type f -exec mv {} android/app/src/main/jniLibs/arm64-v8a/libn_m3u8dl.so \;
+            chmod +x android/app/src/main/jniLibs/arm64-v8a/libn_m3u8dl.so
+            echo "[SUCCESS] N_m3u8DL-RE embedded in jniLibs!"
+          fi
+          
+          # 2. Download FFmpeg static binary for Android ARM64
+          echo "Fetching Android FFmpeg..."
+          curl -sL "https://github.com/hzw1199/Android-FFmpeg-Prebuilt/raw/master/ffmpeg-v5.1.2-arm64-v8a" -o android/app/src/main/jniLibs/arm64-v8a/libffmpeg.so || true
+          chmod +x android/app/src/main/jniLibs/arm64-v8a/libffmpeg.so || true
+          
+          echo "Embedded native libraries:"
+          ls -lh android/app/src/main/jniLibs/arm64-v8a/ || true
+
       - name: Build Android Release APK
         run: flutter build apk --release
 

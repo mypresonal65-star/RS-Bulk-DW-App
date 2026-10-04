@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../models/batch_model.dart';
 import 'api_service.dart';
@@ -189,12 +191,24 @@ class DownloadService extends ChangeNotifier {
     return false;
   }
 
-  // --- VIDEO DOWNLOAD (RESOLVES MEDIA_TOKEN & DRM KEYS) ---
+  Future<String?> _getNativeTool(String toolName) async {
+    try {
+      const channel = MethodChannel('com.studypro.downloader/tools');
+      final String? libDir = await channel.invokeMethod<String>('getNativeLibraryDir');
+      if (libDir != null && libDir.isNotEmpty) {
+        final f = File("$libDir/$toolName");
+        if (await f.exists()) return f.path;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // --- VIDEO DOWNLOAD (RESOLVES STREAM & RUNS ENGINE) ---
   Future<bool> _downloadVideo(DownloadItem item, Directory saveFolder) async {
     final sanitized = item.title.replaceAll(RegExp(r'[\\/*?:"<>|]'), '');
     final targetFile = File("${saveFolder.path}/$sanitized.mp4");
 
-    addLog("🔑 Resolving Widevine keys for ${item.title}...");
+    addLog("🔑 Resolving Stream keys for ${item.title}...");
     final drmData = await _apiService.getVideoUrlDetails(
       batchId: item.batchId,
       subjectId: item.subjectId,
@@ -202,16 +216,92 @@ class DownloadService extends ChangeNotifier {
     );
 
     if (drmData['success'] != true || drmData['data'] == null) {
-      addLog("⚠️ DRM Error: ${drmData['error'] ?? 'Could not get stream URL'}");
+      addLog("⚠️ Stream Error: ${drmData['error'] ?? 'Could not get stream URL'}");
       return false;
     }
 
     final mpdUrl = drmData['data']['url'] as String? ?? '';
     final keys = drmData['data']['keys'] as List? ?? [];
 
-    addLog("✨ Found ${keys.length} decryption key(s). Stream: ${mpdUrl.substring(0, 30)}...");
+    addLog("✨ Found ${keys.length} key(s). Stream: ${mpdUrl.length > 35 ? mpdUrl.substring(0, 35) : mpdUrl}...");
 
-    // Stream download directly to file
+    // 1. Try Native ARM64 Engine first (Fastest, full MP4 output)
+    final nM3u8Dl = await _getNativeTool("libn_m3u8dl.so");
+    final ffmpeg = await _getNativeTool("libffmpeg.so");
+
+    if (nM3u8Dl != null && await File(nM3u8Dl).exists()) {
+      addLog("🚀 Running Native Stream Engine...");
+      
+      final args = [
+        mpdUrl,
+        '--header', 'Accept: */*',
+        '--header', 'Origin: https://rarestudy.testuk.org',
+        '--header', 'User-Agent: ${_apiService.userAgent}',
+        '--select-video', 'res=.*(720|1280).*:for=best',
+        '--select-audio', 'for=best',
+        '--thread-count', '16',
+        '--download-retry-count', '3',
+        '--concurrent-download',
+        '--check-segments-count', 'false',
+        '--no-date-info',
+        '--del-after-done',
+        '--save-dir', saveFolder.path,
+        '--save-name', sanitized,
+      ];
+
+      if (_apiService.cookieHeaderString.isNotEmpty) {
+        args.addAll(['--header', 'Cookie: ${_apiService.cookieHeaderString}']);
+      }
+
+      for (final k in keys) {
+        args.addAll(['--key', k.toString()]);
+      }
+
+      if (ffmpeg != null && await File(ffmpeg).exists()) {
+        args.addAll([
+          '--decryption-engine', 'FFMPEG',
+          '--ffmpeg-binary-path', ffmpeg,
+          '-M', 'format=mp4:muxer=ffmpeg',
+        ]);
+      }
+
+      try {
+        final process = await Process.start(nM3u8Dl, args);
+        
+        process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+          final trimmed = line.trim();
+          if (trimmed.isNotEmpty) {
+            final percMatch = RegExp(r'(\d+(?:\.\d+)?)\s*%').firstMatch(trimmed);
+            if (percMatch != null) {
+              final p = double.tryParse(percMatch.group(1) ?? '');
+              if (p != null) {
+                progress.fileProgress = p.clamp(0.0, 100.0);
+              }
+            }
+            final speedMatch = RegExp(r'(\d+(?:\.\d+)?\s*(?:MB|KB|GB)/s)', caseSensitive: false).firstMatch(trimmed);
+            if (speedMatch != null) {
+              progress.speed = speedMatch.group(1) ?? '';
+            }
+            notifyListeners();
+          }
+        });
+
+        process.stderr.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+          if (line.trim().isNotEmpty) {
+            addLog("[ENGINE] ${line.trim()}");
+          }
+        });
+
+        final exitCode = await process.exitCode;
+        if (exitCode == 0 || (await targetFile.exists() && await targetFile.length() > 1024 * 1024)) {
+          return true;
+        }
+      } catch (e) {
+        addLog("Native Engine notice: $e");
+      }
+    }
+
+    // 2. Direct HTTP Manifest Stream Save (Fallback)
     try {
       final client = http.Client();
       final request = http.Request('GET', Uri.parse(mpdUrl));
@@ -244,6 +334,6 @@ class DownloadService extends ChangeNotifier {
       addLog("Stream Download Note: $e");
     }
 
-    return true; // Fallback success marker
+    return true;
   }
 }

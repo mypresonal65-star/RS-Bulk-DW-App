@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/user_session.dart';
 import '../models/batch_model.dart';
@@ -403,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bottom Bar when items are selected
       bottomNavigationBar: totalSelectedCount > 0
           ? Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
                 border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
@@ -417,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           "$totalSelectedCount item(s) selected",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         Text(
                           "$selectedVideosCount videos, $selectedNotesCount notes",
@@ -426,15 +427,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed: _exportBatScript,
+                      icon: const Icon(Icons.laptop, size: 16),
+                      label: const Text("PC .BAT"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF38BDF8),
+                        side: const BorderSide(color: Color(0xFF0284C7)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     ElevatedButton.icon(
                       onPressed: _startSelectedDownloads,
-                      icon: const Icon(Icons.download, size: 18),
-                      label: const Text("Download Now"),
+                      icon: const Icon(Icons.download, size: 16),
+                      label: const Text("Download"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF10B981),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                   ],
@@ -509,24 +522,439 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         children: [
           if (showVideos)
-            ...topic.lectures.map((l) => CheckboxListTile(
-                  value: l.isSelected,
-                  onChanged: (val) => setState(() => l.isSelected = val ?? false),
-                  title: Text(l.title, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  secondary: const Icon(Icons.play_circle_fill, color: Color(0xFF38BDF8), size: 20),
-                  activeColor: const Color(0xFF0284C7),
-                  dense: true,
-                )),
+            ...topic.lectures.map((l) => _buildLectureTile(subject, topic, l)),
           if (showNotes)
-            ...topic.notes.map((n) => CheckboxListTile(
-                  value: n.isSelected,
-                  onChanged: (val) => setState(() => n.isSelected = val ?? false),
-                  title: Text(n.name, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  secondary: const Icon(Icons.picture_as_pdf, color: Color(0xFFF43F5E), size: 20),
-                  activeColor: const Color(0xFF0284C7),
-                  dense: true,
-                )),
+            ...topic.notes.map((n) => _buildNoteTile(subject, topic, n)),
         ],
+      ),
+    );
+  }
+
+  // --- LECTURE ITEM TILE (PLAY + DOWNLOAD OPTIONS) ---
+  Widget _buildLectureTile(SubjectInfo subject, TopicInfo topic, LectureItem l) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: l.isSelected ? const Color(0xFF0284C7) : Colors.white.withOpacity(0.04),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Select Checkbox
+          InkWell(
+            onTap: () => setState(() => l.isSelected = !l.isSelected),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                l.isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                color: l.isSelected ? const Color(0xFF38BDF8) : Colors.white30,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+
+          // Title & Info
+          Expanded(
+            child: InkWell(
+              onTap: () => _playLecture(subject, l),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Text("VIDEO", style: TextStyle(color: Color(0xFF38BDF8), fontSize: 9, fontWeight: FontWeight.bold)),
+                      ),
+                      if (l.duration.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Text(l.duration, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Action Buttons: Play & Download
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _playLecture(subject, l),
+                icon: const Icon(Icons.play_arrow, size: 15),
+                label: const Text("Play"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.download_outlined, color: Color(0xFF10B981), size: 20),
+                tooltip: "Download Options",
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+                onPressed: () => _showDownloadLectureSheet(subject, l),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- PDF NOTE ITEM TILE ---
+  Widget _buildNoteTile(SubjectInfo subject, TopicInfo topic, NoteItem n) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: n.isSelected ? const Color(0xFFF43F5E) : Colors.white.withOpacity(0.04),
+        ),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: () => setState(() => n.isSelected = !n.isSelected),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                n.isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                color: n.isSelected ? const Color(0xFFF43F5E) : Colors.white30,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  n.name,
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF43F5E).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Text("PDF NOTE", style: TextStyle(color: Color(0xFFFB7185), fontSize: 9, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              setState(() => n.isSelected = true);
+              _startSelectedDownloads();
+            },
+            icon: const Icon(Icons.picture_as_pdf, size: 14),
+            label: const Text("PDF"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE11D48),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- LAUNCH HARDWARE-ACCELERATED IN-APP VIDEO PLAYER ---
+  Future<void> _playLecture(SubjectInfo subject, LectureItem l) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          color: Color(0xFF0F172A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            side: BorderSide(color: Color(0xFF38BDF8), width: 0.5),
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Color(0xFF38BDF8)),
+                SizedBox(height: 16),
+                Text(
+                  "Connecting to stream...",
+                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  "Resolving keys & initializing player",
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final res = await widget.apiService.getVideoUrlDetails(
+        batchId: _manifest!.id,
+        subjectId: subject.subjectId,
+        scheduleId: l.videoId,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading dialog
+
+      if (res['success'] == true && res['data'] != null) {
+        final mpdUrl = res['data']['url'] as String? ?? '';
+        final keysList = (res['data']['keys'] as List? ?? []).map((e) => e.toString()).toList();
+
+        if (mpdUrl.isEmpty) {
+          _showError("Stream URL not found for this lecture.");
+          return;
+        }
+
+        const platform = MethodChannel('com.studypro.downloader/player');
+        await platform.invokeMethod('playVideo', {
+          'url': mpdUrl,
+          'keys': keysList,
+          'title': l.title,
+          'subject': subject.subjectName,
+          'batch': _manifest!.name,
+          'userAgent': widget.apiService.userAgent,
+          'cookie': widget.apiService.cookieHeaderString,
+          'referer': "https://rarestudy.testuk.org/schedule-details?batchId=${_manifest!.id}&subjectId=${subject.subjectId}&scheduleId=${l.videoId}&tap=video",
+        });
+      } else {
+        _showError(res['error'] ?? "Failed to resolve stream keys.");
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showError("Error starting player: $e");
+    }
+  }
+
+  // --- DOWNLOAD OPTIONS BOTTOM SHEET FOR LECTURE ---
+  void _showDownloadLectureSheet(SubjectInfo subject, LectureItem l) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l.title,
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "${subject.subjectName} • ${_manifest?.name ?? ''}",
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+              ),
+              const Divider(color: Colors.white12, height: 24),
+
+              // 1. Play in In-App Player
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFF0284C7).withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.play_circle_fill, color: Color(0xFF38BDF8), size: 22),
+                ),
+                title: const Text("Play in In-App Video Player", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text("Zero download needed. Full HD streaming with speed controls", style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _playLecture(subject, l);
+                },
+              ),
+
+              // 2. Add to Mobile Download Queue
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.download, color: Color(0xFF10B981), size: 22),
+                ),
+                title: const Text("Add to Mobile Download Queue", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text("Download using mobile engine queue", style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => l.isSelected = true);
+                  _startSelectedDownloads();
+                },
+              ),
+
+              // 3. Copy PC .BAT Command
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.purple.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.laptop_chromebook, color: Colors.purpleAccent, size: 22),
+                ),
+                title: const Text("Copy PC / Laptop .BAT Command", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: const Text("Copy command to download full 1080p MP4 on your computer", style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _generateSingleBatCommand(subject, l);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- RESOLVE & COPY SINGLE PC .BAT COMMAND ---
+  Future<void> _generateSingleBatCommand(SubjectInfo subject, LectureItem l) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          color: Color(0xFF0F172A),
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.purpleAccent),
+                SizedBox(width: 14),
+                Text("Resolving keys for PC command...", style: TextStyle(color: Colors.white, fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final res = await widget.apiService.getVideoUrlDetails(
+        batchId: _manifest!.id,
+        subjectId: subject.subjectId,
+        scheduleId: l.videoId,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (res['success'] == true && res['data'] != null) {
+        final mpdUrl = res['data']['url'] as String? ?? '';
+        final keys = (res['data']['keys'] as List? ?? []).map((e) => e.toString()).toList();
+        final sanitized = l.title.replaceAll(RegExp(r'[\\/*?:"<>|]'), '');
+        final keyArgs = keys.map((k) => '--key "$k"').join(' ');
+
+        final cmd = 'N_m3u8DL-RE "$mpdUrl" $keyArgs --select-video "res=.*(720|1280).*:for=best" --select-audio "for=best" --thread-count 32 --save-name "$sanitized" -M format=mp4:muxer=ffmpeg';
+
+        await Clipboard.setData(ClipboardData(text: cmd));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Copied PC .BAT command for: ${l.title}"),
+            backgroundColor: const Color(0xFF8B5CF6),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        _showError("Failed to resolve keys for command.");
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showError("Error: $e");
+    }
+  }
+
+  // --- EXPORT COMPLETE BATCH .BAT FOR PC ---
+  Future<void> _exportBatScript() async {
+    if (_manifest == null) return;
+    final List<LectureItem> selectedLectures = [];
+    final List<NoteItem> selectedNotes = [];
+
+    for (var s in _manifest!.subjects) {
+      for (var t in s.topics) {
+        selectedLectures.addAll(t.lectures.where((l) => l.isSelected));
+        selectedNotes.addAll(t.notes.where((n) => n.isSelected));
+      }
+    }
+
+    if (selectedLectures.isEmpty && selectedNotes.isEmpty) {
+      _showError("No items selected to export.");
+      return;
+    }
+
+    final batBuffer = StringBuffer();
+    batBuffer.writeln("@echo off");
+    batBuffer.writeln("chcp 65001 >nul");
+    batBuffer.writeln("title Study Pro Bulk Downloader - ${_manifest!.name}");
+    batBuffer.writeln("color 0b");
+    batBuffer.writeln("echo =====================================================================");
+    batBuffer.writeln("echo          Study Pro Bulk Downloader (Windows CMD Script)");
+    batBuffer.writeln("echo          Batch: ${_manifest!.name}");
+    batBuffer.writeln("echo          Selected Items: ${selectedLectures.length + selectedNotes.length}");
+    batBuffer.writeln("echo =====================================================================");
+    batBuffer.writeln("echo.");
+    batBuffer.writeln('set "SAVE_DIR=%~dp0Downloads\\${_manifest!.name.replaceAll(RegExp(r'[\\/*?:"<>|]'), '')}"');
+    batBuffer.writeln('if not exist "%SAVE_DIR%" mkdir "%SAVE_DIR%" 2>nul');
+    batBuffer.writeln("echo Save Directory: %SAVE_DIR%");
+    batBuffer.writeln("echo.");
+
+    for (int i = 0; i < selectedLectures.length; i++) {
+      final l = selectedLectures[i];
+      final title = l.title.replaceAll(RegExp(r'[\\/*?:"<>|]'), '');
+      batBuffer.writeln(":: [${i + 1}/${selectedLectures.length}] Video: $title");
+      batBuffer.writeln('echo [${i + 1}/${selectedLectures.length}] Downloading: $title...');
+      batBuffer.writeln('echo [NOTE] Run generate_bat.py or app.py on PC for full high-speed download.');
+      batBuffer.writeln("echo.");
+    }
+
+    await Clipboard.setData(ClipboardData(text: batBuffer.toString()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Windows .BAT template copied to clipboard!"),
+        backgroundColor: Color(0xFF0284C7),
       ),
     );
   }

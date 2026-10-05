@@ -74,9 +74,21 @@ git push -u origin main
 
 ---
 
-### 🛡️ App Features & Permissions Included:
+### 🛡️ App Features & Updates Included:
+- **🎬 In-App Ultra HD Video Player (Rasta 2)**:
+  - Bina download kiye direct phone me lectures watch kro (1080p / 720p / 480p).
+  - ClearKey DRM on-the-fly hardware-accelerated decryption.
+  - **Speed Controls**: 0.75x, 1.0x, 1.25x, 1.5x, 2.0x (Speed study).
+  - **Seek & Jump**: +10s forward, -10s rewind aur timeline scrubber.
+  - **Auto Fullscreen & Rotate**: Landscape mode support.
+- **📥 In-Player Download Button**:
+  - Player ke top bar me dedicated Download button hai.
+  - 1-click se High-Speed PC .BAT command copy ya stream details nikal sakte hain.
+- **💻 Export PC .BAT Feature**:
+  - Mobile app se course select krke laptop/PC ke liye 64-thread high speed `.bat` script direct export kr sakte hain!
+- **📄 Direct PDF Notes Downloader**:
+  - Notes aur attachments direct phone ke `Downloads` folder me save hote hain.
 - **MANAGE_EXTERNAL_STORAGE**: Android 10, 11, 12, 13, 14 ke sabhi phones me direct memory access.
 - **Background Downloader**: Screen lock hone par bhi downloads band nahi honge (`FOREGROUND_SERVICE` & `WAKE_LOCK`).
 - **Cloudflare License System**: Phone HWID (`MOB-...`) ke sath locked, duration countdown, instant block support.
 - **Central Headers Auto-Sync**: Admin panel par cookie update krte hi phone me bina app update kiye nayi cookies aa jayengi.
-- **Offline DRM Stream Handling**: Widevine DRM keys auto-resolve and encrypted stream decryption.

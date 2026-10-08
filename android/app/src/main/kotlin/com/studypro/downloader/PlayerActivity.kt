@@ -3,6 +3,7 @@ package com.studypro.downloader
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -53,7 +54,7 @@ class PlayerActivity : Activity() {
             // WebView multi-process directory suffix safety
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 try {
-                    val processName = getProcessName()
+                    val processName = Application.getProcessName()
                     if (packageName != processName) {
                         WebView.setDataDirectorySuffix(processName)
                     }

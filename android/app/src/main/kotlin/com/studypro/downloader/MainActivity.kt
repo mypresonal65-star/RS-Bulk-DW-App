@@ -25,27 +25,32 @@ class MainActivity: FlutterActivity() {
         // 2. Video Player Channel (Launches hardware-accelerated In-App Player)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PLAYER_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "playVideo") {
-                val mpdUrl = call.argument<String>("url") ?: ""
-                val title = call.argument<String>("title") ?: "Lecture"
-                val subject = call.argument<String>("subject") ?: ""
-                val batchName = call.argument<String>("batch") ?: ""
-                val keysList = call.argument<List<String>>("keys") ?: emptyList()
-                val userAgent = call.argument<String>("userAgent") ?: ""
-                val cookie = call.argument<String>("cookie") ?: ""
-                val referer = call.argument<String>("referer") ?: "https://rarestudy.testuk.org/"
+                try {
+                    val mpdUrl = call.argument<String>("url") ?: ""
+                    val title = call.argument<String>("title") ?: "Lecture"
+                    val subject = call.argument<String>("subject") ?: ""
+                    val batchName = call.argument<String>("batch") ?: ""
+                    val keysRaw = call.argument<List<*>>("keys") ?: emptyList<Any>()
+                    val keysList = ArrayList(keysRaw.map { it?.toString() ?: "" }.filter { it.isNotEmpty() })
+                    val userAgent = call.argument<String>("userAgent") ?: ""
+                    val cookie = call.argument<String>("cookie") ?: ""
+                    val referer = call.argument<String>("referer") ?: "https://rarestudy.testuk.org/"
 
-                val intent = Intent(this, PlayerActivity::class.java).apply {
-                    putExtra("mpdUrl", mpdUrl)
-                    putExtra("title", title)
-                    putExtra("subject", subject)
-                    putExtra("batchName", batchName)
-                    putStringArrayListExtra("keys", ArrayList(keysList))
-                    putExtra("userAgent", userAgent)
-                    putExtra("cookie", cookie)
-                    putExtra("referer", referer)
+                    val intent = Intent(this, PlayerActivity::class.java).apply {
+                        putExtra("mpdUrl", mpdUrl)
+                        putExtra("title", title)
+                        putExtra("subject", subject)
+                        putExtra("batchName", batchName)
+                        putStringArrayListExtra("keys", keysList)
+                        putExtra("userAgent", userAgent)
+                        putExtra("cookie", cookie)
+                        putExtra("referer", referer)
+                    }
+                    startActivity(intent)
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("LAUNCH_ERROR", "Failed to launch video player: ${e.message}", null)
                 }
-                startActivity(intent)
-                result.success(true)
             } else {
                 result.notImplemented()
             }

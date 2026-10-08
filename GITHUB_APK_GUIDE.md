@@ -75,7 +75,12 @@ git push -u origin main
 ---
 
 ### 🛡️ App Features & Updates Included:
-- **🎬 In-App Ultra HD Video Player (Rasta 2)**:
+- **⚙️ All 3 Native Download Engines Bundled Inside APK**:
+  - `libn_m3u8dl.so` (N_m3u8DL-RE Android Bionic ARM64)
+  - `libmp4decrypt.so` (Bento4 CENC Decrypter ARM64)
+  - `libffmpeg.so` (FFmpeg Static Muxer ARM64)
+  - Teeno tools direct APK ke native directory me extract hote hain taaki phone khud stream download, decrypt aur clear MP4 me mux kar sake!
+- **🎬 In-App Ultra HD Video Player**:
   - Bina download kiye direct phone me lectures watch kro (1080p / 720p / 480p).
   - ClearKey DRM on-the-fly hardware-accelerated decryption.
   - **Speed Controls**: 0.75x, 1.0x, 1.25x, 1.5x, 2.0x (Speed study).

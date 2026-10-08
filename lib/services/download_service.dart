@@ -225,12 +225,15 @@ class DownloadService extends ChangeNotifier {
 
     addLog("✨ Found ${keys.length} key(s). Stream: ${mpdUrl.length > 35 ? mpdUrl.substring(0, 35) : mpdUrl}...");
 
-    // 1. Try Native ARM64 Engine first (Fastest, full MP4 output)
+    // 1. Try Native ARM64 Engine (N_m3u8DL-RE + mp4decrypt + FFmpeg)
     final nM3u8Dl = await _getNativeTool("libn_m3u8dl.so");
+    final mp4decrypt = await _getNativeTool("libmp4decrypt.so");
     final ffmpeg = await _getNativeTool("libffmpeg.so");
 
+    addLog("Tools Status: N_m3u8DL=${nM3u8Dl != null ? '✅' : '❌'} | mp4decrypt=${mp4decrypt != null ? '✅' : '❌'} | ffmpeg=${ffmpeg != null ? '✅' : '❌'}");
+
     if (nM3u8Dl != null && await File(nM3u8Dl).exists()) {
-      addLog("🚀 Running Native Stream Engine...");
+      addLog("🚀 Running In-App Native Stream Engine...");
       
       final args = [
         mpdUrl,
@@ -257,9 +260,14 @@ class DownloadService extends ChangeNotifier {
         args.addAll(['--key', k.toString()]);
       }
 
+      if (mp4decrypt != null && await File(mp4decrypt).exists()) {
+        args.addAll([
+          '--decryption-binary-path', mp4decrypt,
+        ]);
+      }
+
       if (ffmpeg != null && await File(ffmpeg).exists()) {
         args.addAll([
-          '--decryption-engine', 'FFMPEG',
           '--ffmpeg-binary-path', ffmpeg,
           '-M', 'format=mp4:muxer=ffmpeg',
         ]);
@@ -301,7 +309,16 @@ class DownloadService extends ChangeNotifier {
       }
     }
 
-    // 2. Direct HTTP Manifest Stream Save (Fallback)
+    // 2. Direct Stream Handling (Prevent saving 5KB XML manifest files as fake MP4)
+    if (mpdUrl.endsWith('.mpd') || mpdUrl.contains('.mpd?')) {
+      addLog("ℹ️ Protected MPEG-DASH Stream detected.");
+      addLog("💡 Use In-App Player to stream in Full HD, or use 'PC .BAT' to download raw MP4 on computer.");
+      if (await targetFile.exists() && await targetFile.length() < 100 * 1024) {
+        await targetFile.delete();
+      }
+      return false;
+    }
+
     try {
       final client = http.Client();
       final request = http.Request('GET', Uri.parse(mpdUrl));
@@ -320,6 +337,7 @@ class DownloadService extends ChangeNotifier {
         await for (var chunk in response.stream) {
           if (_cancelRequested) {
             await sink.close();
+            if (await targetFile.exists()) await targetFile.delete();
             return false;
           }
           sink.add(chunk);
@@ -328,12 +346,20 @@ class DownloadService extends ChangeNotifier {
           notifyListeners();
         }
         await sink.close();
-        return true;
+
+        // Verify that the file is an actual video file (> 500 KB)
+        if (await targetFile.length() > 500 * 1024) {
+          return true;
+        } else {
+          if (await targetFile.exists()) await targetFile.delete();
+          addLog("⚠️ Stream response was not a full video file. Use In-App Player or PC .BAT export.");
+          return false;
+        }
       }
     } catch (e) {
       addLog("Stream Download Note: $e");
     }
 
-    return true;
+    return false;
   }
 }

@@ -6,8 +6,10 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -31,77 +33,117 @@ class PlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Keep screen on while playing lectures
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        hideSystemUI()
+        try {
+            // Keep screen on while playing lectures
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        currentMpdUrl = intent.getStringExtra("mpdUrl") ?: ""
-        currentTitle = intent.getStringExtra("title") ?: "Lecture Player"
-        val subject = intent.getStringExtra("subject") ?: ""
-        val batchName = intent.getStringExtra("batchName") ?: ""
-        currentKeys = intent.getStringArrayListExtra("keys") ?: arrayListOf()
-        val userAgent = intent.getStringExtra("userAgent") ?: ""
-        val cookie = intent.getStringExtra("cookie") ?: ""
-        val referer = intent.getStringExtra("referer") ?: "https://rarestudy.testuk.org/"
-
-        webView = WebView(this).apply {
-            setBackgroundColor(Color.BLACK)
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            mediaPlaybackRequiresUserGesture = false
-            allowFileAccess = true
-            allowContentAccess = true
-            databaseEnabled = true
-            setSupportMultipleWindows(false)
-            if (userAgent.isNotEmpty()) {
-                userAgentString = userAgent
+            currentMpdUrl = intent.getStringExtra("mpdUrl") ?: ""
+            currentTitle = intent.getStringExtra("title") ?: "Lecture Player"
+            val subject = intent.getStringExtra("subject") ?: ""
+            val batchName = intent.getStringExtra("batchName") ?: ""
+            currentKeys = try {
+                intent.getStringArrayListExtra("keys") ?: arrayListOf()
+            } catch (e: Exception) {
+                arrayListOf()
             }
-        }
+            val userAgent = intent.getStringExtra("userAgent") ?: ""
+            val cookie = intent.getStringExtra("cookie") ?: ""
+            val referer = intent.getStringExtra("referer") ?: "https://rarestudy.testuk.org/"
 
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                return super.onConsoleMessage(consoleMessage)
+            // WebView multi-process directory suffix safety
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    val processName = getProcessName()
+                    if (packageName != processName) {
+                        WebView.setDataDirectorySuffix(processName)
+                    }
+                } catch (ignored: Exception) {}
             }
-        }
 
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                return false
+            webView = WebView(this).apply {
+                setBackgroundColor(Color.BLACK)
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
             }
+
+            webView.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                allowFileAccess = true
+                allowContentAccess = true
+                databaseEnabled = true
+                setSupportMultipleWindows(false)
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                if (userAgent.isNotEmpty()) {
+                    userAgentString = userAgent
+                }
+            }
+
+            // Sync auth cookies to WebView
+            if (cookie.isNotEmpty()) {
+                try {
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(webView, true)
+                    cookie.split(";").forEach { c ->
+                        val trimmed = c.trim()
+                        if (trimmed.isNotEmpty()) {
+                            cookieManager.setCookie("https://rarestudy.testuk.org/", trimmed)
+                        }
+                    }
+                    cookieManager.flush()
+                } catch (ignored: Exception) {}
+            }
+
+            webView.webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                    return super.onConsoleMessage(consoleMessage)
+                }
+            }
+
+            webView.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    return false
+                }
+            }
+
+            webView.addJavascriptInterface(PlayerBridge(this), "PlayerBridge")
+
+            val html = buildPlayerHtml(currentMpdUrl, currentTitle, subject, batchName, currentKeys, referer)
+            webView.loadDataWithBaseURL("https://rarestudy.testuk.org/", html, "text/html", "UTF-8", null)
+
+            setContentView(webView)
+            hideSystemUI()
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not open video player: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
         }
-
-        webView.addJavascriptInterface(PlayerBridge(this), "PlayerBridge")
-
-        val html = buildPlayerHtml(currentMpdUrl, currentTitle, subject, batchName, currentKeys, referer)
-        webView.loadDataWithBaseURL("https://rarestudy.testuk.org/", html, "text/html", "UTF-8", null)
-
-        setContentView(webView)
     }
 
     private fun hideSystemUI() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.insetsController?.let { controller ->
+                    controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                    controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                )
             }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-            )
-        }
+        } catch (ignored: Exception) {}
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -122,21 +164,41 @@ class PlayerActivity : Activity() {
         }
     }
 
+    fun openExternalPlayer() {
+        runOnUiThread {
+            try {
+                if (currentMpdUrl.isEmpty()) {
+                    Toast.makeText(this, "Stream URL is not available", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(Uri.parse(currentMpdUrl), "video/*")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(Intent.createChooser(intent, "Play Video With"))
+            } catch (e: Exception) {
+                Toast.makeText(this, "No external video player found (Install VLC / MX Player)", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun showDownloadDialog() {
         runOnUiThread {
             val options = arrayOf(
+                "▶️ Play in External Video Player (VLC / MX Player)",
                 "💻 Copy Windows .BAT Command (High-Speed PC Download)",
                 "📋 Copy Stream Details (MPEG-DASH URL & Keys)",
-                "ℹ️ Video Download Info"
+                "ℹ️ Video Playback & Download Info"
             )
 
             AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Download Options")
+                .setTitle("Playback & Download Options")
                 .setItems(options) { _, which ->
                     when (which) {
-                        0 -> copyBatCommand()
-                        1 -> copyStreamDetails()
-                        2 -> showDownloadInfo()
+                        0 -> openExternalPlayer()
+                        1 -> copyBatCommand()
+                        2 -> copyStreamDetails()
+                        3 -> showDownloadInfo()
                     }
                 }
                 .setNegativeButton("Close", null)
@@ -153,7 +215,7 @@ class PlayerActivity : Activity() {
         val clip = ClipData.newPlainText("PC Download Command", cmd)
         clipboard.setPrimaryClip(clip)
 
-        Toast.makeText(this, "PC .BAT Command copied to clipboard! Run on laptop to download full MP4.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "PC .BAT Command copied! Run on laptop/PC to download.", Toast.LENGTH_LONG).show()
     }
 
     private fun copyStreamDetails() {
@@ -174,7 +236,12 @@ class PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
-        webView.destroy()
+        try {
+            if (::webView.isInitialized) {
+                webView.loadUrl("about:blank")
+                webView.destroy()
+            }
+        } catch (ignored: Exception) {}
         super.onDestroy()
     }
 
@@ -548,66 +615,83 @@ class PlayerActivity : Activity() {
       spinner.style.display = 'none';
       const b = document.getElementById('error-banner');
       b.style.display = 'block';
-      b.innerText = msg;
+      b.innerHTML = '<div style="font-weight:bold;margin-bottom:6px;">' + msg + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">' +
+        '<button onclick="PlayerBridge.openExternalPlayer()" style="background:#0284c7;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;">▶️ Open in VLC / External Player</button>' +
+        '<button onclick="PlayerBridge.onDownloadClicked()" style="background:#10b981;color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;">⬇️ Download Options</button>' +
+        '</div>';
     }
 
     async function initShaka() {
-      shaka.polyfill.installAll();
-      if (!shaka.Player.isBrowserSupported()) {
-        showError("MSE / ClearKey DRM is not supported on this device.");
-        return;
-      }
-
-      const player = new shaka.Player(video);
-      window.player = player;
-
-      // ClearKey mapping
-      const clearKeysMap = {};
-      if (Array.isArray(rawKeys)) {
-        rawKeys.forEach(k => {
-          const p = k.split(':');
-          if (p.length === 2) {
-            clearKeysMap[p[0].trim()] = p[1].trim();
-          }
-        });
-      }
-
-      const config = {
-        streaming: {
-          bufferingGoal: 20,
-          rebufferingGoal: 2,
-          bufferBehind: 30
-        }
-      };
-
-      if (Object.keys(clearKeysMap).length > 0) {
-        config.drm = { clearKeys: clearKeysMap };
-      }
-
-      player.configure(config);
-
-      player.getNetworkingEngine().registerRequestFilter((type, request) => {
-        request.headers['Origin'] = 'https://rarestudy.testuk.org';
-        if (referer) request.headers['Referer'] = referer;
-      });
-
-      player.addEventListener('error', (e) => {
-        console.error('Shaka player error:', e.detail);
-        showError("Stream error: " + (e.detail?.message || "Buffering issue"));
-      });
-
       try {
+        shaka.polyfill.installAll();
+        if (!shaka.Player.isBrowserSupported()) {
+          showError("Media Source Extensions (MSE) or DRM is not supported on this device.");
+          return;
+        }
+
+        const player = new shaka.Player(video);
+        window.player = player;
+
+        // ClearKey mapping
+        const clearKeysMap = {};
+        if (Array.isArray(rawKeys)) {
+          rawKeys.forEach(k => {
+            const p = k.split(':');
+            if (p.length === 2) {
+              clearKeysMap[p[0].trim()] = p[1].trim();
+            }
+          });
+        }
+
+        const config = {
+          streaming: {
+            bufferingGoal: 20,
+            rebufferingGoal: 2,
+            bufferBehind: 30
+          }
+        };
+
+        if (Object.keys(clearKeysMap).length > 0) {
+          config.drm = { clearKeys: clearKeysMap };
+        }
+
+        player.configure(config);
+
+        player.getNetworkingEngine().registerRequestFilter((type, request) => {
+          request.headers['Origin'] = 'https://rarestudy.testuk.org';
+          if (referer) request.headers['Referer'] = referer;
+        });
+
+        player.addEventListener('error', (e) => {
+          console.error('Shaka player error:', e.detail);
+          const detailMsg = e.detail?.message || "Buffering or stream connection issue";
+          showError("Playback error: " + detailMsg);
+        });
+
         await player.load(mpdUrl);
         spinner.style.display = 'none';
         video.play().catch(() => {});
         availableTracks = player.getVariantTracks().filter(t => t.videoId != null);
       } catch (e) {
         console.error("Load failed:", e);
-        showError("Failed to load stream: " + e.message);
+        showError("Failed to load stream: " + (e.message || e));
       }
     }
 
-    document.addEventListener('DOMContentLoaded', initShaka);
+    let shakaAttempts = 0;
+    function checkAndInit() {
+      if (typeof shaka !== 'undefined') {
+        initShaka();
+      } else if (shakaAttempts < 12) {
+        shakaAttempts++;
+        setTimeout(checkAndInit, 300);
+      } else {
+        showError("⚠️ Player engine (Shaka Player) could not be loaded from network. Please check your internet connection.");
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', checkAndInit);
   </script>
 </body>
 </html>
@@ -628,6 +712,11 @@ class PlayerActivity : Activity() {
         @JavascriptInterface
         fun onDownloadClicked() {
             activity.showDownloadDialog()
+        }
+
+        @JavascriptInterface
+        fun openExternalPlayer() {
+            activity.openExternalPlayer()
         }
     }
 }

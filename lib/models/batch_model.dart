@@ -3,6 +3,7 @@ class LectureItem {
   final String title;
   final String duration;
   final String date;
+  final String rawUrl;
   bool isSelected;
 
   LectureItem({
@@ -10,6 +11,7 @@ class LectureItem {
     required this.title,
     this.duration = '',
     this.date = '',
+    this.rawUrl = '',
     this.isSelected = false,
   });
 
@@ -19,6 +21,7 @@ class LectureItem {
       title: json['title'] ?? json['topic'] ?? 'Untitled Lecture',
       duration: json['duration']?.toString() ?? '',
       date: json['date']?.toString() ?? '',
+      rawUrl: json['url']?.toString() ?? '',
     );
   }
 }

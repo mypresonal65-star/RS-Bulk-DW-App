@@ -698,6 +698,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- LAUNCH HARDWARE-ACCELERATED IN-APP VIDEO PLAYER ---
   Future<void> _playLecture(SubjectInfo subject, LectureItem l) async {
+    bool isDialogShowing = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -729,7 +730,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      isDialogShowing = false;
+    });
 
     try {
       final res = await widget.apiService.getVideoUrlDetails(
@@ -738,34 +741,45 @@ class _HomeScreenState extends State<HomeScreen> {
         scheduleId: l.videoId,
       );
 
-      if (!mounted) return;
-      Navigator.pop(context); // Dismiss loading dialog
+      if (isDialogShowing && mounted) {
+        Navigator.pop(context);
+        isDialogShowing = false;
+      }
+
+      String mpdUrl = '';
+      List<String> keysList = [];
 
       if (res['success'] == true && res['data'] != null) {
-        final mpdUrl = res['data']['url'] as String? ?? '';
-        final keysList = (res['data']['keys'] as List? ?? []).map((e) => e.toString()).toList();
-
-        if (mpdUrl.isEmpty) {
-          _showError("Stream URL not found for this lecture.");
-          return;
-        }
-
-        const platform = MethodChannel('com.studypro.downloader/player');
-        await platform.invokeMethod('playVideo', {
-          'url': mpdUrl,
-          'keys': keysList,
-          'title': l.title,
-          'subject': subject.subjectName,
-          'batch': _manifest!.name,
-          'userAgent': widget.apiService.userAgent,
-          'cookie': widget.apiService.cookieHeaderString,
-          'referer': "https://rarestudy.testuk.org/schedule-details?batchId=${_manifest!.id}&subjectId=${subject.subjectId}&scheduleId=${l.videoId}&tap=video",
-        });
-      } else {
-        _showError(res['error'] ?? "Failed to resolve stream keys.");
+        mpdUrl = res['data']['url'] as String? ?? '';
+        keysList = (res['data']['keys'] as List? ?? []).map((e) => e.toString()).toList();
       }
+
+      // Fallback: If API did not return url, check if rawUrl was in batch JSON
+      if (mpdUrl.isEmpty && l.rawUrl.isNotEmpty) {
+        mpdUrl = l.rawUrl;
+      }
+
+      if (mpdUrl.isEmpty) {
+        _showError(res['error'] ?? "Stream URL not found for this lecture.");
+        return;
+      }
+
+      const platform = MethodChannel('com.studypro.downloader/player');
+      await platform.invokeMethod('playVideo', {
+        'url': mpdUrl,
+        'keys': keysList,
+        'title': l.title,
+        'subject': subject.subjectName,
+        'batch': _manifest!.name,
+        'userAgent': widget.apiService.userAgent,
+        'cookie': widget.apiService.cookieHeaderString,
+        'referer': "https://rarestudy.testuk.org/schedule-details?batchId=${_manifest!.id}&subjectId=${subject.subjectId}&scheduleId=${l.videoId}&tap=video",
+      });
     } catch (e) {
-      if (mounted) Navigator.pop(context);
+      if (isDialogShowing && mounted) {
+        Navigator.pop(context);
+        isDialogShowing = false;
+      }
       _showError("Error starting player: $e");
     }
   }
@@ -852,6 +866,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- RESOLVE & COPY SINGLE PC .BAT COMMAND ---
   Future<void> _generateSingleBatCommand(SubjectInfo subject, LectureItem l) async {
+    bool isDialogShowing = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -871,7 +886,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      isDialogShowing = false;
+    });
 
     try {
       final res = await widget.apiService.getVideoUrlDetails(
@@ -879,30 +896,48 @@ class _HomeScreenState extends State<HomeScreen> {
         subjectId: subject.subjectId,
         scheduleId: l.videoId,
       );
-      if (!mounted) return;
-      Navigator.pop(context);
+
+      if (isDialogShowing && mounted) {
+        Navigator.pop(context);
+        isDialogShowing = false;
+      }
+
+      String mpdUrl = '';
+      List<String> keys = [];
 
       if (res['success'] == true && res['data'] != null) {
-        final mpdUrl = res['data']['url'] as String? ?? '';
-        final keys = (res['data']['keys'] as List? ?? []).map((e) => e.toString()).toList();
+        mpdUrl = res['data']['url'] as String? ?? '';
+        keys = (res['data']['keys'] as List? ?? []).map((e) => e.toString()).toList();
+      }
+
+      if (mpdUrl.isEmpty && l.rawUrl.isNotEmpty) {
+        mpdUrl = l.rawUrl;
+      }
+
+      if (mpdUrl.isNotEmpty) {
         final sanitized = l.title.replaceAll(RegExp(r'[\\/*?:"<>|]'), '');
         final keyArgs = keys.map((k) => '--key "$k"').join(' ');
 
         final cmd = 'N_m3u8DL-RE "$mpdUrl" $keyArgs --select-video "res=.*(720|1280).*:for=best" --select-audio "for=best" --thread-count 32 --save-name "$sanitized" -M format=mp4:muxer=ffmpeg';
 
         await Clipboard.setData(ClipboardData(text: cmd));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Copied PC .BAT command for: ${l.title}"),
-            backgroundColor: const Color(0xFF8B5CF6),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Copied PC .BAT command for: ${l.title}"),
+              backgroundColor: const Color(0xFF8B5CF6),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       } else {
-        _showError("Failed to resolve keys for command.");
+        _showError(res['error'] ?? "Failed to resolve stream URL for command.");
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context);
+      if (isDialogShowing && mounted) {
+        Navigator.pop(context);
+        isDialogShowing = false;
+      }
       _showError("Error: $e");
     }
   }

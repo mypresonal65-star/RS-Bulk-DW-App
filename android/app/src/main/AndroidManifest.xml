@@ -53,7 +53,7 @@
         <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@style/NormalTheme"
             android:hardwareAccelerated="true"
             android:exported="false">
         </activity>
